@@ -1,0 +1,65 @@
+{
+  "name": "coolify-deploy-cli",
+  "version": "1.0.1",
+  "description": "Complete CLI tool for Coolify deployment automation - Deploy applications from GitHub to Coolify without Playwright",
+  "main": "index.js",
+  "bin": {
+    "coolify-deploy": "./index.js",
+    "coolify-api": "./index.js",
+    "coolify-complete": "./index.js",
+    "coolify-real": "./index.js"
+  },
+  "scripts": {
+    "start": "node coolify-complete-cli.cjs",
+    "deploy": "node coolify-complete-cli.cjs deploy",
+    "help": "node coolify-complete-cli.cjs help",
+    "install-global": "npm install -g .",
+    "test": "node coolify-complete-cli.cjs help"
+  },
+  "keywords": [
+    "coolify",
+    "deployment",
+    "cli",
+    "automation",
+    "devops",
+    "docker",
+    "nixpacks",
+    "github",
+    "api",
+    "serverless",
+    "deployment-automation"
+  ],
+  "author": {
+    "name": "Claude Code",
+    "email": "noreply@anthropic.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lanmower/coolify-cli-test-app-1760614765.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lanmower/coolify-cli-test-app-1760614765/issues"
+  },
+  "homepage": "https://github.com/lanmower/coolify-cli-test-app-1760614765#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "*.cjs",
+    "*.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "optionalDependencies": {
+    "axios": "^1.6.0"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/anthropics"
+  }
+}
