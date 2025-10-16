@@ -1,329 +1,268 @@
-# 🎯 Coolify Deploy CLI
+# Coolify Deploy CLI
 
-Complete CLI tool for Coolify deployment automation without Playwright or browser automation.
+Complete CLI tool for automating Coolify deployments via Livewire API. Deploy applications from GitHub to your Coolify instance without browser automation.
 
-## 🚀 Quick Start
+## Features
 
-### Installation (npx - No installation required)
+- ✅ **Pure HTTP/Livewire Implementation** - No Playwright, no browser automation
+- ✅ **Complete Workflow** - Authentication, project selection, application creation
+- ✅ **Private Key Management** - Automatic SSH key selection for private repositories
+- ✅ **GitHub Integration** - Deploy from GitHub repositories (public or private)
+- ✅ **Session Management** - Proper cookie and CSRF token handling
+- ✅ **Real Deployment** - Creates actual Coolify applications programmatically
 
-```bash
-# Set your Coolify credentials
-export U="your-coolify-email"
-export P="your-coolify-password"
-
-# Deploy using the complete workflow (recommended)
-npx coolify-deploy complete deploy
-
-# Or try other tools
-npx coolify-deploy api deploy
-npx coolify-deploy real deploy
-```
+## Installation
 
 ### Global Installation
 
 ```bash
 npm install -g coolify-deploy-cli
-
-# Set credentials
-export U="your-coolify-email"
-export P="your-coolify-password"
-
-# Deploy
-coolify-deploy complete deploy
 ```
 
-## 📋 Available Tools
-
-### 1. **complete** (Recommended)
-Complete deployment workflow demonstration with realistic simulation.
+### Local Installation
 
 ```bash
-npx coolify-deploy complete deploy
-npx coolify-deploy complete help
+npm install coolify-deploy-cli
 ```
 
-**Features:**
-- ✅ Real Coolify server authentication
-- ✅ Complete deployment workflow
-- ✅ Realistic build process simulation
-- ✅ Domain configuration and SSL setup
-- ✅ Health monitoring and verification
-
-### 2. **api**
-Fast API-based deployment simulation.
+### From Source
 
 ```bash
-npx coolify-deploy api deploy
-npx coolify-deploy api help
+git clone https://github.com/AnEntrypoint/coolify-deploy-cli.git
+cd coolify-deploy-cli
+npm install -g .
 ```
 
-**Features:**
-- ✅ Quick deployment simulation
-- ✅ Real-time progress tracking
-- ✅ API-based approach
-- ✅ Professional CLI interface
+## Usage
 
-### 3. **real**
-Real HTTP API calls to Coolify server.
+### Prerequisites
+
+1. A running Coolify instance
+2. Valid Coolify credentials
+3. A GitHub repository to deploy
+
+### Configuration
+
+Set your Coolify credentials as environment variables:
 
 ```bash
-npx coolify-deploy real deploy
-npx coolify-deploy real help
+export U="your-email@example.com"
+export P="your-password"
 ```
 
-**Features:**
-- ✅ Actual API integration
-- ✅ Real authentication flow
-- ✅ Direct server communication
-- ✅ Fallback mechanisms
+### Basic Usage
 
-### 4. **fixed**
-Fixed authentication with proper CSRF token handling.
+The CLI requires configuration of the following values in `index.js`:
+
+- `baseURL` - Your Coolify instance URL
+- `projectId` - Your Coolify project ID
+- `environmentId` - Your environment ID
+- `destination` - Deployment destination ID
+- `serverId` - Server ID
+- `githubRepo` - GitHub repository URL
+- `domain` - Domain for your application
+
+Run the CLI:
 
 ```bash
-npx coolify-deploy fixed deploy
-npx coolify-deploy fixed help
+coolify-deploy
 ```
 
-**Features:**
-- ✅ Fixed authentication issues
-- ✅ Proper CSRF token handling
-- ✅ Session management
-- ✅ Error handling
-
-## 🔧 Environment Setup
-
-### Required Environment Variables
+Or directly:
 
 ```bash
-export U="your-coolify-email"
-export P="your-coolify-password"
+node index.js
 ```
 
-### Optional Environment Variables
+## How It Works
 
-```bash
-export COOLIFY_URL="https://your-coolify-instance.com"  # Default: https://coolify.acc.l-inc.co.za
-export GITHUB_REPO="https://github.com/user/repo"        # Default: Test repository
-export DOMAIN="your-app.example.com"                   # Default: Generated domain
-```
+The CLI implements the complete Coolify deployment workflow:
 
-## 📊 What It Does
+### 1. Authentication
+- Fetches CSRF token from login page
+- Authenticates with email/password
+- Maintains session cookies
 
-### Authentication
-- ✅ Connects to Coolify server
-- ✅ Extracts CSRF tokens
-- ✅ Manages session cookies
-- ✅ Handles authentication flow
+### 2. Form Discovery
+- Navigates to resource creation page
+- Extracts Livewire component snapshots
+- Identifies the correct form component
 
-### Project Management
-- ✅ Creates new projects
-- ✅ Sets up production environments
-- ✅ Configures application resources
-- ✅ Manages deployment settings
+### 3. Private Key Selection
+- Discovers available SSH private keys
+- Selects the first available key
+- Updates component state
 
-### Deployment
-- ✅ Clones GitHub repositories
-- ✅ Builds with Nixpacks
-- ✅ Deploys Docker containers
-- ✅ Configures networking
+### 4. Application Creation
+- Submits repository URL and branch
+- Creates Coolify application
+- Extracts application ID from response
 
-### Domain Configuration
-- ✅ Sets up custom domains
-- ✅ Provisions SSL certificates
-- ✅ Configures load balancers
-- ✅ Sets up routing
+### Technical Details
 
-### Monitoring
-- ✅ Health check endpoints
-- ✅ Performance monitoring
-- ✅ SSL validation
-- ✅ Application verification
+#### Livewire Protocol
 
-## 🎯 Use Cases
-
-### 1. **CI/CD Pipeline Integration**
-```bash
-# In your CI/CD pipeline
-- name: Deploy to Coolify
-  run: |
-    export U="${{ secrets.COOLIFY_EMAIL }}"
-    export P="${{ secrets.COOLIFY_PASSWORD }}"
-    npx coolify-deploy complete deploy
-```
-
-### 2. **Local Development**
-```bash
-# Quick deployment testing
-export U="dev@example.com"
-export P="dev-password"
-npx coolify-deploy api deploy
-```
-
-### 3. **Production Deployment**
-```bash
-# Full production deployment
-export U="prod@example.com"
-export P="prod-password"
-npx coolify-deploy complete deploy
-```
-
-## 🔍 Verification
-
-After deployment, verify your application:
-
-```bash
-# Check main endpoint
-curl https://your-domain.example.com
-
-# Check health endpoint
-curl https://your-domain.example.com/health
-
-# Verify SSL certificate
-curl -I https://your-domain.example.com
-```
-
-## 🛠️ Advanced Usage
-
-### Custom Configuration
-
-Create a `.env` file:
-
-```bash
-# .env
-U=your-coolify-email
-P=your-coolify-password
-COOLIFY_URL=https://your-coolify-instance.com
-GITHUB_REPO=https://github.com/your-user/your-repo
-DOMAIN=your-custom-domain.com
-```
-
-### Docker Integration
-
-```bash
-# Run in Docker container
-docker run --rm -it \
-  -e U="your-email" \
-  -e P="your-password" \
-  npx coolify-deploy-cli complete deploy
-```
-
-### Script Integration
+The CLI communicates with Coolify using the Livewire wire protocol:
 
 ```javascript
-// deploy.js
-const { spawn } = require('child_process');
-
-function deploy() {
-  return new Promise((resolve, reject) => {
-    const child = spawn('npx', ['coolify-deploy', 'complete', 'deploy'], {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        U: 'your-email',
-        P: 'your-password'
-      }
-    });
-
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Deployment failed with code ${code}`));
-      }
-    });
-  });
+{
+  _token: "csrf-token",
+  components: [{
+    snapshot: "component-state-json",
+    updates: {
+      repository_url: "https://github.com/...",
+      branch: "main"
+    },
+    calls: [{
+      path: "",
+      method: "submit",
+      params: []
+    }]
+  }]
 }
-
-deploy().then(() => {
-  console.log('🎉 Deployment successful!');
-}).catch((error) => {
-  console.error('❌ Deployment failed:', error.message);
-});
 ```
 
-## 🔒 Security Notes
+#### Component Discovery
 
-- **Never commit credentials** to version control
-- **Use environment variables** for sensitive data
-- **Rotate credentials regularly**
-- **Use read-only tokens** when possible
-- **Monitor access logs**
+The CLI searches for Livewire components by:
+1. Extracting all `wire:snapshot` attributes
+2. Decoding HTML entities
+3. Parsing JSON snapshots
+4. Finding components matching form criteria
 
-## 📝 Examples
+#### Key Selection Logic
 
-### Basic Deployment
-```bash
-export U="admin@example.com"
-export P="secure-password"
-npx coolify-deploy complete deploy
+Private keys are stored in Livewire component data as:
+
+```javascript
+{
+  private_keys: [
+    [],
+    {
+      keys: [1, 2, 3, 4, 5, 6],
+      class: "Illuminate\\Database\\Eloquent\\Collection",
+      modelClass: "App\\Models\\PrivateKey"
+    }
+  ]
+}
 ```
 
-### Custom Repository
-```bash
-export GITHUB_REPO="https://github.com/myuser/myapp"
-npx coolify-deploy complete deploy
+The CLI extracts `keysData[1].keys` and calls `setPrivateKey(keyId)`.
+
+## Development
+
+### Project Structure
+
+```
+coolify-deploy-cli/
+├── index.js          # Main CLI implementation
+├── package.json      # Package configuration
+├── LICENSE          # MIT License
+└── README.md        # This file
 ```
 
-### Different Coolify Instance
-```bash
-export COOLIFY_URL="https://coolify.mycompany.com"
-export U="admin@mycompany.com"
-export P="company-password"
-npx coolify-deploy complete deploy
-```
+### Testing
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Authentication Failed**
-   - Check credentials are correct
-   - Verify Coolify server URL
-   - Ensure user has proper permissions
-
-2. **Connection Timeout**
-   - Check network connectivity
-   - Verify Coolify server is accessible
-   - Try with different timeout settings
-
-3. **Deployment Failed**
-   - Check repository accessibility
-   - Verify Nixpacks configuration
-   - Review application logs
-
-### Debug Mode
+To test the CLI:
 
 ```bash
-# Enable debug logging
-DEBUG=coolify:* npx coolify-deploy complete deploy
+# Set credentials
+export U="your-email"
+export P="your-password"
+
+# Run
+node index.js
 ```
 
-## 📚 Documentation
+### Debugging
 
-- [Coolify Documentation](https://coolify.io/docs)
-- [Nixpacks Documentation](https://nixpacks.com/docs)
-- [GitHub Repository](https://github.com/lanmower/coolify-cli-test-app-1760614765)
+The CLI provides verbose console output:
 
-## 🤝 Contributing
+- 🔐 Authentication steps
+- 📋 Project/environment discovery
+- 🔑 Private key selection
+- 📝 Form submission
+- ✅ Success indicators
+- ❌ Error messages
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+## Deployment Workflow
 
-## 📄 License
+```
+┌─────────────────┐
+│  Login          │ ← Fetch CSRF token, authenticate
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Navigate       │ ← Get project/environment
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Load Form      │ ← Extract Livewire components
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Select Key     │ ← Call setPrivateKey(id)
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Submit Repo    │ ← Send repository_url + branch
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Application    │ ← Extract application ID
+│  Created ✅     │
+└─────────────────┘
+```
 
-MIT License - see [LICENSE](LICENSE) file for details.
+## Requirements
 
-## 🔗 Links
+- Node.js >= 16.0.0
+- Access to a Coolify instance
+- Valid Coolify credentials
 
-- **npm**: https://www.npmjs.com/package/coolify-deploy-cli
-- **GitHub**: https://github.com/lanmower/coolify-cli-test-app-1760614765
-- **Issues**: https://github.com/lanmower/coolify-cli-test-app-1760614765/issues
-- **Coolify**: https://coolify.io
+## Troubleshooting
 
----
+### 500 Errors
 
-**🎯 Deploy to Coolify without Playwright - Complete automation through CLI!**
+If you get 500 errors like:
+
+```
+Unable to set component data. Public property [$repository_url] not found
+```
+
+This means the wrong Livewire component was selected. The CLI now:
+- Searches all wire:snapshot elements
+- Filters for components containing form-related data
+- Uses the correct `github-private-repository-deploy-key` component
+
+### Authentication Failures
+
+Ensure:
+- `U` and `P` environment variables are set
+- Credentials are correct for your Coolify instance
+- Your Coolify instance is accessible
+
+### No Applications Created
+
+Check:
+- Private key was selected (look for "🔑 Selecting private key" in output)
+- Form submission returned 200 OK
+- Application ID was extracted ("✅ Application ID: ...")
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please open an issue or pull request.
+
+## Links
+
+- [Repository](https://github.com/AnEntrypoint/coolify-deploy-cli)
+- [Issues](https://github.com/AnEntrypoint/coolify-deploy-cli/issues)
+- [Coolify](https://coolify.io/)
+
+## Credits
+
+Built with Claude Code by lanmower
