@@ -141,103 +141,6 @@ class CoolifyLogs {
         }
     }
 
-    async getApplicationsWithDomains(projId, envId) {
-        try {
-            // Try to fetch the environment page and extract application info from Livewire
-            const envPageUrl = `${this.baseURL}/project/${projId}/environment/${envId}`;
-            const envRes = await this.request(envPageUrl);
-
-            // Look for application data in the HTML or Livewire state
-            const applications = [];
-
-            // Look for data attributes or JSON embedded in the page
-            const jsonMatches = envRes.body.match(/wire:initial-data="([^"]+)"/g);
-            if (jsonMatches && jsonMatches.length > 0) {
-                try {
-                    for (const match of jsonMatches) {
-                        const decoded = match
-                            .replace(/wire:initial-data="/, '')
-                            .replace(/"$/, '')
-                            .replace(/&quot;/g, '"')
-                            .replace(/&lt;/g, '<')
-                            .replace(/&gt;/g, '>')
-                            .replace(/&amp;/g, '&');
-
-                        const data = JSON.parse(decoded);
-                        if (data.data && data.data.resources) {
-                            // Extract applications from Livewire data
-                            if (Array.isArray(data.data.resources)) {
-                                for (const resource of data.data.resources) {
-                                    if (resource.id && resource.name) {
-                                        applications.push({
-                                            id: resource.id,
-                                            name: resource.name,
-                                            domains: resource.domains || []
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // Ignore JSON parsing errors
-                }
-            }
-
-            return applications;
-        } catch (e) {
-            return [];
-        }
-    }
-
-    async getApplicationDomains(projId, envId, appId) {
-        try {
-            const appPageUrl = `${this.baseURL}/project/${projId}/environment/${envId}/application/${appId}`;
-            const appRes = await this.request(appPageUrl);
-            const foundDomains = new Set();
-
-            // Pattern 1: Look for https://domain.com in the HTML
-            const httpsRegex = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
-            let match;
-            while ((match = httpsRegex.exec(appRes.body)) !== null) {
-                const domain = match[1].toLowerCase();
-                // Filter out common non-domain patterns and localhost
-                if (!domain.includes('example.com') &&
-                    !domain.includes('localhost') &&
-                    !domain.includes('coollabs.io') &&
-                    !domain.includes('cdn.') &&
-                    !domain.includes('github.com') &&
-                    !domain.includes('opencollective.com') &&
-                    !domain.includes('donate.stripe.com') &&
-                    !domain.includes('svgjs.dev') &&
-                    !domain.includes('w3.org')) {
-                    foundDomains.add(domain);
-                }
-            }
-
-            // Pattern 2: Look for domain-like text near fqdn attribute
-            const fqdnRegex = /fqdn["\']?\s*[:\>]*\s*["\']?([a-z0-9.-]+\.[a-z]{2,})["\']?/gi;
-            while ((match = fqdnRegex.exec(appRes.body)) !== null) {
-                const domain = match[1].toLowerCase();
-                if (!domain.includes('example.com') && !domain.includes('localhost')) {
-                    foundDomains.add(domain);
-                }
-            }
-
-            // Pattern 3: Look for x-text="item.fqdn">https://... patterns
-            const xtextRegex = /x-text="[^"]*fqdn[^"]*"[^<]*>([a-z0-9:\/.-]+\.[a-z]{2,})/gi;
-            while ((match = xtextRegex.exec(appRes.body)) !== null) {
-                const domain = match[1].toLowerCase();
-                if (!domain.includes('example.com') && !domain.includes('localhost')) {
-                    foundDomains.add(domain);
-                }
-            }
-
-            return Array.from(foundDomains);
-        } catch (e) {
-            return [];
-        }
-    }
 
     async listAllResources() {
         console.log('📋 Listing all available resources with domains...\n');
@@ -280,92 +183,37 @@ class CoolifyLogs {
                     try {
                         const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
 
-                        // Extract application IDs from links
-                        const appLinkRegex = /href="\/project\/[^\/]+\/environment\/[^\/]+\/application\/([a-z0-9]+)"/g;
-                        let appMatch;
-                        const apps = [];
-                        const appDetails = {};
+                        // Extract domains directly from page
+                        // Applications are rendered by Livewire and their domains are in the HTML
+                        const domainRegex = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
+                        let domainMatch;
+                        const pageDomainsFound = new Set();
 
-                        while ((appMatch = appLinkRegex.exec(projectRes.body)) !== null) {
-                            const appId = appMatch[1];
-                            if (!apps.includes(appId)) {
-                                apps.push(appId);
+                        while ((domainMatch = domainRegex.exec(projectRes.body)) !== null) {
+                            const domain = domainMatch[1].toLowerCase();
+                            // Filter out Coolify internal and common domains
+                            if (!domain.includes('coolify.io') &&
+                                !domain.includes('coolify.247420.xyz') &&
+                                !domain.includes('coollabs.io') &&
+                                !domain.includes('cdn.') &&
+                                !domain.includes('github.com') &&
+                                !domain.includes('opencollective.com') &&
+                                !domain.includes('donate.stripe.com') &&
+                                !domain.includes('svgjs.dev') &&
+                                !domain.includes('w3.org') &&
+                                !domain.includes('localhost')) {
+                                pageDomainsFound.add(domain);
                             }
                         }
 
-                        // If that didn't work, try simpler patterns
-                        if (apps.length === 0) {
-                            const simpleAppRegex = /\/application\/([a-z0-9]{24})/g;
-                            while ((appMatch = simpleAppRegex.exec(projectRes.body)) !== null) {
-                                const appId = appMatch[1];
-                                if (!apps.includes(appId)) {
-                                    apps.push(appId);
-                                }
-                            }
-                        }
-
-                        // Extract app names if available
-                        for (const appId of apps) {
-                            const namePattern = new RegExp(`<a[^>]*href="[^"]*\/${appId}"[^>]*>([^<]+)<`, 'i');
-                            const nameMatch = projectRes.body.match(namePattern);
-                            if (nameMatch) {
-                                appDetails[appId] = {
-                                    name: nameMatch[1].trim().substring(0, 100)
-                                };
-                            }
-                        }
-
-                        if (apps.length > 0) {
-                            for (const appId of apps) {
-                                // Get domains for this application
-                                const domains = await this.getApplicationDomains(projId, envId, appId);
-
-                                // Get app name if available
-                                const appName = appDetails[appId]?.name || appId;
-
-                                // Display in clear format
-                                if (domains.length > 0) {
-                                    domains.forEach(domain => {
-                                        console.log(`   🌐 ${domain}`);
-                                    });
-                                } else {
-                                    console.log(`   🚀 ${appName} (no domains configured)`);
-                                }
-
+                        if (pageDomainsFound.size > 0) {
+                            pageDomainsFound.forEach(domain => {
+                                console.log(`   🌐 ${domain}`);
                                 resourceCount++;
-                            }
-                        } else if (projectRes.body.length > 0) {
-                            // If no apps found by ID extraction, try to extract domains directly from the page
-                            // This happens when apps are rendered dynamically by Livewire
-                            const domainRegex = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
-                            let domainMatch;
-                            const pageDomainsFound = new Set();
-
-                            while ((domainMatch = domainRegex.exec(projectRes.body)) !== null) {
-                                const domain = domainMatch[1].toLowerCase();
-                                // Filter out Coolify internal and common domains
-                                if (!domain.includes('coolify.io') &&
-                                    !domain.includes('coollabs.io') &&
-                                    !domain.includes('cdn.') &&
-                                    !domain.includes('github.com') &&
-                                    !domain.includes('opencollective.com') &&
-                                    !domain.includes('donate.stripe.com') &&
-                                    !domain.includes('svgjs.dev') &&
-                                    !domain.includes('w3.org') &&
-                                    !domain.includes('localhost')) {
-                                    pageDomainsFound.add(domain);
-                                }
-                            }
-
-                            if (pageDomainsFound.size > 0) {
-                                pageDomainsFound.forEach(domain => {
-                                    console.log(`   🌐 ${domain}`);
-                                    resourceCount++;
-                                });
-                            }
+                            });
                         }
                     } catch (e) {
-                        console.log(`   ⚠️  Could not fetch applications: ${e.message}`);
+                        console.log(`   ⚠️  Could not fetch environment: ${e.message}`);
                     }
                 }
                 console.log();
