@@ -489,12 +489,13 @@ class CoolifyLogs {
 
     async viewLatestDeploymentLogs() {
         try {
-            const email = process.env.U;
-            const password = process.env.P;
+            const email = process.env.COOLIFY_USERNAME || process.env.U;
+            const password = process.env.COOLIFY_PASSWORD || process.env.P;
 
             if (!email || !password) {
                 console.error('❌ Missing credentials');
-                console.error('Set U and P environment variables with your Coolify login details\n');
+                console.error('Set COOLIFY_USERNAME and COOLIFY_PASSWORD environment variables with your Coolify login details\n');
+                console.error('Or set U and P environment variables\n');
                 process.exit(1);
             }
 
@@ -558,12 +559,13 @@ if (require.main === module) {
         // For list command, login and show all available resources
         (async () => {
             try {
-                const email = process.env.U;
-                const password = process.env.P;
+                const email = process.env.COOLIFY_USERNAME || process.env.U;
+                const password = process.env.COOLIFY_PASSWORD || process.env.P;
 
                 if (!email || !password) {
                     console.error('❌ Missing credentials');
-                    console.error('Set U and P environment variables with your Coolify login details\n');
+                    console.error('Set COOLIFY_USERNAME and COOLIFY_PASSWORD environment variables with your Coolify login details\n');
+                    console.error('Or set U and P environment variables\n');
                     process.exit(1);
                 }
 
