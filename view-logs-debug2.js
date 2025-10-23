@@ -17,9 +17,9 @@ class CoolifyLogsDebug extends CoolifyLogs {
         fs.writeFileSync('/tmp/deployment-page.html', res.body);
         console.log('Saved full HTML to /tmp/deployment-page.html\n');
 
-        // Show first 3000 chars
-        console.log('--- First 3000 chars ---');
-        console.log(res.body.substring(0, 3000));
+        // Show full response body
+        console.log('--- Response Body ---');
+        console.log(res.body);
         console.log('--- End ---\n');
 
         // Try multiple strategies to extract logs
@@ -59,10 +59,7 @@ class CoolifyLogsDebug extends CoolifyLogs {
                 .replace(/<[^>]+>/g, '');
 
             console.log('\n--- DEPLOYMENT LOGS ---\n');
-            console.log(logsContent.substring(0, 3000));
-            if (logsContent.length > 3000) {
-                console.log('\n... (truncated) ...\n');
-            }
+            console.log(logsContent);
             console.log('\n--- END LOGS ---\n');
 
             return logsContent;

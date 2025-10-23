@@ -13,9 +13,9 @@ class CoolifyLogsDebug extends CoolifyLogs {
 
         console.log('Response status:', res.status);
         console.log('Response body length:', res.body.length);
-        console.log('\n--- First 2000 chars of HTML ---');
-        console.log(res.body.substring(0, 2000));
-        console.log('--- End sample ---\n');
+        console.log('\n--- Full HTML ---');
+        console.log(res.body);
+        console.log('--- End ---\n');
 
         // Extract deployment links from HTML
         const deploymentLinks = [];
