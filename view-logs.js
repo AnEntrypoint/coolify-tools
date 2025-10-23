@@ -226,6 +226,83 @@ class CoolifyLogs {
         }
     }
 
+    async findApplicationByDomain(domain) {
+        console.log(`🔍 Searching for application with domain: ${domain}\n`);
+
+        try {
+            // Get dashboard
+            let dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+            if (!dashboardRes.body || (typeof dashboardRes.body === 'string' && dashboardRes.body.includes('404'))) {
+                dashboardRes = await this.request(`${this.baseURL}/`);
+            }
+
+            // Extract all projects and environments
+            const projectRegex = /\/project\/([a-z0-9]+)\/environment\/([a-z0-9]+)/g;
+            let match;
+            const projects = {};
+
+            while ((match = projectRegex.exec(dashboardRes.body)) !== null) {
+                const projectId = match[1];
+                const envId = match[2];
+                if (!projects[projectId]) {
+                    projects[projectId] = [];
+                }
+                if (!projects[projectId].includes(envId)) {
+                    projects[projectId].push(envId);
+                }
+            }
+
+            // For each project and environment, check applications
+            for (const [projId, envIds] of Object.entries(projects)) {
+                for (const envId of envIds) {
+                    try {
+                        const envRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
+
+                        // Extract applications JSON data
+                        const jsonMatch = envRes.body.match(/applications:\s*JSON\.parse\('([^']+)'\)/);
+                        if (jsonMatch) {
+                            try {
+                                const jsonStr = jsonMatch[1]
+                                    .replace(/\\u0022/g, '"')
+                                    .replace(/\\\\\//g, '/')
+                                    .replace(/\\u005c/g, '\\');
+
+                                const apps = JSON.parse(jsonStr);
+
+                                // Check each app for matching domain
+                                for (const app of apps) {
+                                    if (app.fqdn) {
+                                        const domainMatch = app.fqdn.match(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/i);
+                                        if (domainMatch) {
+                                            const appDomain = domainMatch[1].toLowerCase();
+                                            if (appDomain === domain.toLowerCase()) {
+                                                console.log(`✅ Found application: ${app.name}`);
+                                                this.projectId = projId;
+                                                this.environmentId = envId;
+                                                this.applicationId = app.uuid;
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (parseErr) {
+                                // Skip if JSON parsing fails
+                            }
+                        }
+                    } catch (e) {
+                        // Skip environments that fail
+                    }
+                }
+            }
+
+            console.error(`❌ Application with domain '${domain}' not found`);
+            return false;
+        } catch (error) {
+            console.error('Error searching for application:', error.message);
+            return false;
+        }
+    }
+
     async discoverResources() {
         console.log('🔍 Discovering projects, environments, and applications...');
 
@@ -495,6 +572,55 @@ class CoolifyLogs {
         }
     }
 
+    async viewLatestDeploymentLogsByDomain(domain) {
+        try {
+            const email = process.env.COOLIFY_USERNAME || process.env.U;
+            const password = process.env.COOLIFY_PASSWORD || process.env.P;
+
+            if (!email || !password) {
+                console.error('❌ Missing credentials');
+                console.error('Set COOLIFY_USERNAME and COOLIFY_PASSWORD environment variables with your Coolify login details\n');
+                console.error('Or set U and P environment variables\n');
+                process.exit(1);
+            }
+
+            console.log('═════════════════════════════════════════\n');
+            console.log('🚀 Coolify Deployment Logs Viewer\n');
+            console.log('═════════════════════════════════════════\n');
+
+            // Step 1: Login
+            await this.login(email, password);
+
+            // Step 2: Find application by domain
+            const found = await this.findApplicationByDomain(domain);
+            if (!found) {
+                console.error(`❌ Application with domain '${domain}' not found`);
+                process.exit(1);
+            }
+
+            // Step 3: Get deployments list
+            const deploymentIds = await this.getDeploymentsList();
+
+            if (deploymentIds.length === 0) {
+                console.log('❌ No deployments found\n');
+                return;
+            }
+
+            // Step 4: Get latest deployment details
+            const latestDeploymentId = deploymentIds[0];
+            const deploymentDetails = await this.getDeploymentDetails(latestDeploymentId);
+
+            // Step 5: Fetch and display logs
+            await this.getDeploymentLogs(latestDeploymentId);
+
+            console.log('✅ Done!\n');
+
+        } catch (error) {
+            console.error('❌ Error:', error.message);
+            process.exit(1);
+        }
+    }
+
     async viewLatestDeploymentLogs(projId = null, envId = null, appId = null) {
         try {
             const email = process.env.COOLIFY_USERNAME || process.env.U;
@@ -603,10 +729,14 @@ if (require.main === module) {
             }
         })();
     } else {
-        // If command looks like proj/env/app format, parse it
+        // Check if command is a domain (contains . and no /) or proj/env/app format
         let parsedProjId = null, parsedEnvId = null, parsedAppId = null;
 
-        if (command && command.includes('/')) {
+        if (command && command.includes('.') && !command.includes('/')) {
+            // Command looks like a domain
+            viewer.viewLatestDeploymentLogsByDomain(command);
+        } else if (command && command.includes('/')) {
+            // Command looks like proj/env/app format
             const parts = command.split('/');
             if (parts.length === 3) {
                 [parsedProjId, parsedEnvId, parsedAppId] = parts;
