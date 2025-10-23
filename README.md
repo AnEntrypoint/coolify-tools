@@ -1,6 +1,6 @@
-# Coolify Deploy CLI
+# Coolify Tools
 
-Complete CLI tool for automating Coolify deployments via Livewire API. Deploy applications from GitHub to your Coolify instance without browser automation.
+Comprehensive CLI toolset for automating Coolify deployments and viewing deployment logs. Deploy applications from GitHub to your Coolify instance and monitor your deployments.
 
 ## Features
 
@@ -16,20 +16,20 @@ Complete CLI tool for automating Coolify deployments via Livewire API. Deploy ap
 ### Global Installation
 
 ```bash
-npm install -g coolify-deploy-cli
+npm install -g coolify-tools
 ```
 
 ### Local Installation
 
 ```bash
-npm install coolify-deploy-cli
+npm install coolify-tools
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/AnEntrypoint/coolify-deploy-cli.git
-cd coolify-deploy-cli
+git clone https://github.com/AnEntrypoint/coolify-tools.git
+cd coolify-tools
 npm install -g .
 ```
 
@@ -65,7 +65,14 @@ The CLI requires configuration of the following values in `index.js`:
 Run the CLI:
 
 ```bash
-coolify-deploy
+coolify-tools
+```
+
+View deployment logs:
+
+```bash
+coolify-logs <coolify-url> list
+coolify-logs <coolify-url> <resource-id>
 ```
 
 Or directly:
@@ -154,8 +161,10 @@ The CLI extracts `keysData[1].keys` and calls `setPrivateKey(keyId)`.
 ### Project Structure
 
 ```
-coolify-deploy-cli/
-├── index.js          # Main CLI implementation
+coolify-tools/
+├── index.js          # Main CLI implementation (coolify-tools command)
+├── view-logs.js      # Log viewer implementation (coolify-logs command)
+├── view-app-logs.js  # Application log viewer
 ├── package.json      # Package configuration
 ├── LICENSE          # MIT License
 └── README.md        # This file
@@ -259,8 +268,9 @@ Contributions welcome! Please open an issue or pull request.
 
 ## Links
 
-- [Repository](https://github.com/AnEntrypoint/coolify-deploy-cli)
-- [Issues](https://github.com/AnEntrypoint/coolify-deploy-cli/issues)
+- [Repository](https://github.com/AnEntrypoint/coolify-tools)
+- [Issues](https://github.com/AnEntrypoint/coolify-tools/issues)
+- [NPM Package](https://www.npmjs.com/package/coolify-tools)
 - [Coolify](https://coolify.io/)
 
 ## Credits
