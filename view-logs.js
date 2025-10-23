@@ -11,13 +11,13 @@ const https = require('https');
 const { URL } = require('url');
 
 class CoolifyLogs {
-    constructor() {
-        this.baseURL = 'https://coolify.acc.l-inc.co.za';
+    constructor(baseURL = null) {
+        this.baseURL = baseURL || process.env.COOLIFY_URL || 'https://coolify.acc.l-inc.co.za';
         this.cookies = '';
         this.csrfToken = null;
-        this.projectId = 'ko4gsw80socs0088ks8w4s4s';
-        this.environmentId = 'aooks0ow0c084s4w80g8ko8w';
-        this.applicationId = 'zo4k4gcksw8g0soo0k488ok0'; // Running application
+        this.projectId = null;
+        this.environmentId = null;
+        this.applicationId = null;
     }
 
     async request(url, options = {}) {
@@ -113,8 +113,79 @@ class CoolifyLogs {
         return true;
     }
 
+    async discoverResources() {
+        console.log('🔍 Discovering projects, environments, and applications...');
+
+        try {
+            const dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+
+            // Extract project IDs
+            const projectRegex = /\/project\/([a-z0-9]+)/g;
+            let match;
+            const projects = [];
+
+            while ((match = projectRegex.exec(dashboardRes.body)) !== null) {
+                if (!projects.includes(match[1])) {
+                    projects.push(match[1]);
+                }
+            }
+
+            if (projects.length > 0) {
+                this.projectId = projects[0];
+                console.log(`Found project: ${this.projectId}`);
+
+                // Now get environment and application from the first project
+                const projectRes = await this.request(`${this.baseURL}/project/${this.projectId}`);
+
+                const envRegex = /\/environment\/([a-z0-9]+)/g;
+                const environments = [];
+
+                while ((match = envRegex.exec(projectRes.body)) !== null) {
+                    if (!environments.includes(match[1])) {
+                        environments.push(match[1]);
+                    }
+                }
+
+                if (environments.length > 0) {
+                    this.environmentId = environments[0];
+                    console.log(`Found environment: ${this.environmentId}`);
+
+                    // Get application
+                    const appRegex = /\/application\/([a-z0-9]+)/g;
+                    const applications = [];
+
+                    while ((match = appRegex.exec(projectRes.body)) !== null) {
+                        if (!applications.includes(match[1])) {
+                            applications.push(match[1]);
+                        }
+                    }
+
+                    if (applications.length > 0) {
+                        this.applicationId = applications[0];
+                        console.log(`Found application: ${this.applicationId}\n`);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        } catch (e) {
+            console.error('Error discovering resources:', e.message);
+            return false;
+        }
+    }
+
     async getDeploymentsList() {
         console.log('📋 Fetching deployments list...');
+
+        // If we don't have the IDs, try to discover them
+        if (!this.projectId || !this.environmentId || !this.applicationId) {
+            const discovered = await this.discoverResources();
+            if (!discovered) {
+                console.error('❌ Could not discover project/environment/application IDs');
+                return [];
+            }
+        }
 
         const deploymentsPageUrl = `${this.baseURL}/project/${this.projectId}/environment/${this.environmentId}/application/${this.applicationId}/deployment`;
         const res = await this.request(deploymentsPageUrl);
@@ -172,71 +243,65 @@ class CoolifyLogs {
     async getDeploymentLogs(deploymentId) {
         console.log(`📜 Fetching deployment logs for ${deploymentId}...\n`);
 
-        // Try the logs tab URL first
-        const logsTabUrl = `${this.baseURL}/project/${this.projectId}/environment/${this.environmentId}/application/${this.applicationId}/deployment/${deploymentId}/logs`;
-        let res = await this.request(logsTabUrl);
+        // Try the deployment page
+        const logsPageUrl = `${this.baseURL}/project/${this.projectId}/environment/${this.environmentId}/application/${this.applicationId}/deployment/${deploymentId}`;
+        const res = await this.request(logsPageUrl);
 
-        // If that doesn't work, try the main deployment page
-        if (res.status === 404 || res.status === 302) {
-            const logsPageUrl = `${this.baseURL}/project/${this.projectId}/environment/${this.environmentId}/application/${this.applicationId}/deployment/${deploymentId}`;
-            res = await this.request(logsPageUrl);
-        }
-
-        // Try multiple strategies to extract logs
-
-        // Strategy 1: Look for pre/code tags
         let logsContent = null;
-        const preMatch = res.body.match(/<pre[^>]*>([\s\S]*?)<\/pre>/);
-        if (preMatch) {
-            logsContent = preMatch[1];
+
+        // Strategy 1: Extract from Livewire component data - this is where actual logs are
+        const wireMatch = res.body.match(/wire:snapshot="([^"]+)"/);
+        if (wireMatch) {
+            try {
+                // Decode HTML entities in the snapshot
+                let decoded = wireMatch[1]
+                    .replace(/&quot;/g, '"')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&');
+
+                const wireData = JSON.parse(decoded);
+
+                // Navigate the Livewire data structure to find logs
+                // The logs are typically in: data.output or similar fields
+                const dataStr = JSON.stringify(wireData);
+
+                // Look for fields that might contain deployment output
+                if (wireData.data && wireData.data.output) {
+                    logsContent = wireData.data.output;
+                } else if (wireData.data && wireData.data.logs) {
+                    logsContent = wireData.data.logs;
+                } else if (wireData.data && wireData.data.deployment_logs) {
+                    logsContent = wireData.data.deployment_logs;
+                } else {
+                    // Search for any field containing significant log-like data
+                    for (const [key, value] of Object.entries(wireData.data || {})) {
+                        if (typeof value === 'string' && value.length > 500 &&
+                            (value.includes('git') || value.includes('npm') || value.includes('build') ||
+                             value.includes('docker') || value.includes('error') || value.includes('step'))) {
+                            logsContent = value;
+                            break;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
         }
 
-        // Strategy 2: Look for code tags
+        // Strategy 2: Look for pre/code tags as fallback
+        if (!logsContent) {
+            const preMatch = res.body.match(/<pre[^>]*>([\s\S]*?)<\/pre>/);
+            if (preMatch) {
+                logsContent = preMatch[1];
+            }
+        }
+
+        // Strategy 3: Look for code tags
         if (!logsContent) {
             const codeMatch = res.body.match(/<code[^>]*>([\s\S]*?)<\/code>/);
             if (codeMatch) {
                 logsContent = codeMatch[1];
-            }
-        }
-
-        // Strategy 3: Extract from wire:snapshot data
-        if (!logsContent) {
-            // Look for Livewire component data that might contain logs
-            const wireMatch = res.body.match(/wire:snapshot="([^"]+)"/);
-            if (wireMatch) {
-                try {
-                    const decoded = wireMatch[1]
-                        .replace(/&quot;/g, '"')
-                        .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>')
-                        .replace(/&amp;/g, '&');
-                    const wireData = JSON.parse(decoded);
-                    // Check if the data contains logs
-                    const dataStr = JSON.stringify(wireData);
-                    if (dataStr.includes('log') && dataStr.length > 100) {
-                        logsContent = dataStr.substring(0, 3000);
-                    }
-                } catch (e) {
-                    // Ignore parse errors
-                }
-            }
-        }
-
-        // Strategy 4: Look for any text content that looks like deployment logs
-        if (!logsContent) {
-            const patterns = [
-                /Cloning into.*?[\s\S]{100,2000}/,
-                /npm install.*?[\s\S]{100,2000}/,
-                /Building.*?[\s\S]{100,2000}/,
-                /Deployment.*?[\s\S]{100,2000}/
-            ];
-
-            for (const pattern of patterns) {
-                const match = res.body.match(pattern);
-                if (match) {
-                    logsContent = match[0];
-                    break;
-                }
             }
         }
 
@@ -248,11 +313,13 @@ class CoolifyLogs {
                 .replace(/&amp;/g, '&')
                 .replace(/&quot;/g, '"')
                 .replace(/&#039;/g, "'")
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
                 .replace(/<[^>]+>/g, ''); // Remove remaining HTML tags
 
             console.log('--- DEPLOYMENT LOGS ---\n');
-            console.log(logsContent.substring(0, 3000));
-            if (logsContent.length > 3000) {
+            console.log(logsContent.substring(0, 5000));
+            if (logsContent.length > 5000) {
                 console.log('\n... (truncated) ...\n');
             }
             console.log('\n--- END LOGS ---\n');
@@ -260,7 +327,7 @@ class CoolifyLogs {
             return logsContent;
         } else {
             console.log('⚠️  Could not extract logs from deployment page\n');
-            console.log('This may require the full Livewire component data or WebSocket connection.\n');
+            console.log('Deployment page URL: ' + logsPageUrl + '\n');
             return null;
         }
     }
@@ -309,8 +376,35 @@ class CoolifyLogs {
 
 // Run if called directly
 if (require.main === module) {
-    const viewer = new CoolifyLogs();
-    viewer.viewLatestDeploymentLogs();
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    let baseURL = null;
+    let command = 'logs';
+
+    // Parse arguments: coolify-logs <url> [command]
+    if (args.length > 0) {
+        if (args[0] === 'list') {
+            command = 'list';
+            baseURL = process.env.COOLIFY_URL;
+        } else if (args[0].startsWith('http')) {
+            baseURL = args[0];
+            if (args[1]) {
+                command = args[1];
+            }
+        } else {
+            command = args[0];
+            baseURL = process.env.COOLIFY_URL;
+        }
+    }
+
+    const viewer = new CoolifyLogs(baseURL);
+
+    if (command === 'list') {
+        // For list command, we need to auto-discover project/environment/application
+        viewer.viewLatestDeploymentLogs();
+    } else {
+        viewer.viewLatestDeploymentLogs();
+    }
 }
 
 module.exports = CoolifyLogs;
