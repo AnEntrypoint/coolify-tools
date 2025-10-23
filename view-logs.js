@@ -42,6 +42,7 @@ class CoolifyLogs {
                 port: urlObj.port || 443,
                 path: urlObj.pathname + urlObj.search,
                 method: options.method || 'GET',
+                rejectUnauthorized: false, // Allow self-signed certificates
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': '*/*',
