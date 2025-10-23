@@ -9,9 +9,6 @@
 
 const https = require('https');
 const { URL } = require('url');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 
 class CoolifyLogs {
     constructor(baseURL = null) {
@@ -36,55 +33,6 @@ class CoolifyLogs {
         this.environmentId = null;
         this.applicationId = null;
 
-        // Cache file for resource IDs
-        this.cacheDir = path.join(os.homedir(), '.coolify-tools');
-        this.cacheFile = path.join(this.cacheDir, 'resources.json');
-    }
-
-    loadResourceCache() {
-        try {
-            if (fs.existsSync(this.cacheFile)) {
-                const data = fs.readFileSync(this.cacheFile, 'utf8');
-                return JSON.parse(data);
-            }
-        } catch (e) {
-            // Silently ignore cache errors
-        }
-        return {};
-    }
-
-    saveResourceCache(cache) {
-        try {
-            if (!fs.existsSync(this.cacheDir)) {
-                fs.mkdirSync(this.cacheDir, { recursive: true });
-            }
-            fs.writeFileSync(this.cacheFile, JSON.stringify(cache, null, 2));
-        } catch (e) {
-            // Silently ignore cache errors
-        }
-    }
-
-    getCacheKey(appName) {
-        // Create a cache key based on baseURL and app name
-        return `${this.baseURL}:${appName}`;
-    }
-
-    cacheApplication(appName, projectId, environmentId, applicationId) {
-        const cache = this.loadResourceCache();
-        cache[this.getCacheKey(appName)] = {
-            projectId,
-            environmentId,
-            applicationId,
-            baseURL: this.baseURL,
-            appName,
-            cachedAt: new Date().toISOString()
-        };
-        this.saveResourceCache(cache);
-    }
-
-    getApplicationFromCache(appName) {
-        const cache = this.loadResourceCache();
-        return cache[this.getCacheKey(appName)];
     }
 
     async request(url, options = {}) {
@@ -368,12 +316,6 @@ class CoolifyLogs {
                                     });
                                 } else {
                                     console.log(`   🚀 ${appName} (no domains configured)`);
-                                }
-
-                                // Cache the application with its primary domain as identifier
-                                if (domains.length > 0) {
-                                    const primaryDomain = domains[0].split('.')[0];
-                                    this.cacheApplication(primaryDomain, projId, envId, appId);
                                 }
 
                                 resourceCount++;
@@ -728,36 +670,29 @@ if (require.main === module) {
     const args = process.argv.slice(2);
     let baseURL = null;
     let command = 'logs';
-    let appName = null;
 
-    // Parse arguments: coolify-logs [<url>] [command] [app-name]
+    // Parse arguments: coolify-logs [<url>] [command]
     if (args.length > 0) {
-        if (args[0] === 'list' || args[0] === 'cached' || args[0] === 'cache') {
-            command = args[0];
+        if (args[0] === 'list') {
+            command = 'list';
             baseURL = process.env.COOLIFY_URL;
-            appName = args[1];
         } else if (args[0].startsWith('http')) {
             baseURL = args[0];
-            if (args[1]) {
-                if (args[1] === 'list' || args[1] === 'cached' || args[1] === 'cache') {
-                    command = args[1];
-                    appName = args[2];
-                } else {
-                    command = args[1];
-                    appName = args[2];
-                }
+            if (args[1] === 'list') {
+                command = 'list';
+            } else if (args[1]) {
+                command = args[1];
             }
         } else {
             command = args[0];
             baseURL = process.env.COOLIFY_URL;
-            appName = args[1];
         }
     }
 
     const viewer = new CoolifyLogs(baseURL);
 
     if (command === 'list') {
-        // For list command, login and show all available resources
+        // For list command, login and show all available resources with domains
         (async () => {
             try {
                 const email = process.env.COOLIFY_USERNAME || process.env.U;
@@ -777,23 +712,6 @@ if (require.main === module) {
                 process.exit(1);
             }
         })();
-    } else if (command === 'cached') {
-        // List cached applications
-        console.log('📋 Cached applications:\n');
-        const cache = viewer.loadResourceCache();
-        if (Object.keys(cache).length === 0) {
-            console.log('No cached applications. Run "coolify-logs list" to discover applications.\n');
-        } else {
-            Object.entries(cache).forEach(([key, data]) => {
-                console.log(`  ${data.appName}:`);
-                console.log(`    Domain: ${data.baseURL}`);
-                console.log(`    Project: ${data.projectId}`);
-                console.log(`    Environment: ${data.environmentId}`);
-                console.log(`    Application: ${data.applicationId}`);
-                console.log(`    Cached: ${new Date(data.cachedAt).toLocaleString()}`);
-                console.log();
-            });
-        }
     } else {
         // If command looks like proj/env/app format, parse it
         let parsedProjId = null, parsedEnvId = null, parsedAppId = null;
