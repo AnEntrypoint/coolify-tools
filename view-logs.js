@@ -9,6 +9,9 @@
 
 const https = require('https');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 class CoolifyLogs {
     constructor(baseURL = null) {
@@ -32,6 +35,56 @@ class CoolifyLogs {
         this.projectId = null;
         this.environmentId = null;
         this.applicationId = null;
+
+        // Cache file for resource IDs
+        this.cacheDir = path.join(os.homedir(), '.coolify-tools');
+        this.cacheFile = path.join(this.cacheDir, 'resources.json');
+    }
+
+    loadResourceCache() {
+        try {
+            if (fs.existsSync(this.cacheFile)) {
+                const data = fs.readFileSync(this.cacheFile, 'utf8');
+                return JSON.parse(data);
+            }
+        } catch (e) {
+            // Silently ignore cache errors
+        }
+        return {};
+    }
+
+    saveResourceCache(cache) {
+        try {
+            if (!fs.existsSync(this.cacheDir)) {
+                fs.mkdirSync(this.cacheDir, { recursive: true });
+            }
+            fs.writeFileSync(this.cacheFile, JSON.stringify(cache, null, 2));
+        } catch (e) {
+            // Silently ignore cache errors
+        }
+    }
+
+    getCacheKey(appName) {
+        // Create a cache key based on baseURL and app name
+        return `${this.baseURL}:${appName}`;
+    }
+
+    cacheApplication(appName, projectId, environmentId, applicationId) {
+        const cache = this.loadResourceCache();
+        cache[this.getCacheKey(appName)] = {
+            projectId,
+            environmentId,
+            applicationId,
+            baseURL: this.baseURL,
+            appName,
+            cachedAt: new Date().toISOString()
+        };
+        this.saveResourceCache(cache);
+    }
+
+    getApplicationFromCache(appName) {
+        const cache = this.loadResourceCache();
+        return cache[this.getCacheKey(appName)];
     }
 
     async request(url, options = {}) {
@@ -140,11 +193,99 @@ class CoolifyLogs {
         }
     }
 
+    async getApplicationsWithDomains(projId, envId) {
+        try {
+            // Try to fetch the environment page and extract application info from Livewire
+            const envPageUrl = `${this.baseURL}/project/${projId}/environment/${envId}`;
+            const envRes = await this.request(envPageUrl);
+
+            // Look for application data in the HTML or Livewire state
+            const applications = [];
+
+            // Look for data attributes or JSON embedded in the page
+            const jsonMatches = envRes.body.match(/wire:initial-data="([^"]+)"/g);
+            if (jsonMatches && jsonMatches.length > 0) {
+                try {
+                    for (const match of jsonMatches) {
+                        const decoded = match
+                            .replace(/wire:initial-data="/, '')
+                            .replace(/"$/, '')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&lt;/g, '<')
+                            .replace(/&gt;/g, '>')
+                            .replace(/&amp;/g, '&');
+
+                        const data = JSON.parse(decoded);
+                        if (data.data && data.data.resources) {
+                            // Extract applications from Livewire data
+                            if (Array.isArray(data.data.resources)) {
+                                for (const resource of data.data.resources) {
+                                    if (resource.id && resource.name) {
+                                        applications.push({
+                                            id: resource.id,
+                                            name: resource.name,
+                                            domains: resource.domains || []
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignore JSON parsing errors
+                }
+            }
+
+            return applications;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async getApplicationDomains(projId, envId, appId) {
+        try {
+            const appPageUrl = `${this.baseURL}/project/${projId}/environment/${envId}/application/${appId}`;
+            const appRes = await this.request(appPageUrl);
+            const domains = [];
+
+            // Look for domain entries in the application page
+            // Domains are typically shown as links or in specific sections
+            const domainRegex = /(?:domain|hostname|url)[\s:]*(?:<[^>]*>)*([a-z0-9.-]+\.[a-z]{2,})/gi;
+            let match;
+            const foundDomains = new Set();
+
+            while ((match = domainRegex.exec(appRes.body)) !== null) {
+                const domain = match[1].toLowerCase();
+                // Filter out common non-domain patterns
+                if (!domain.includes('example.com') && !domain.includes('localhost') && domain.includes('.')) {
+                    foundDomains.add(domain);
+                }
+            }
+
+            // Additional pattern for domains in specific tags
+            const linkRegex = /<a[^>]*href="(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})[^"]*"[^>]*>/gi;
+            while ((match = linkRegex.exec(appRes.body)) !== null) {
+                const domain = match[1].toLowerCase();
+                if (!domain.includes('example.com') && !domain.includes('localhost') && domain.includes('.')) {
+                    foundDomains.add(domain);
+                }
+            }
+
+            return Array.from(foundDomains);
+        } catch (e) {
+            return [];
+        }
+    }
+
     async listAllResources() {
         console.log('📋 Listing all available resources...\n');
 
         try {
-            const dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+            // Try /dashboard first, then fall back to root
+            let dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+            if (!dashboardRes.body || dashboardRes.body.includes('404')) {
+                dashboardRes = await this.request(`${this.baseURL}/`);
+            }
 
             // Extract all projects with their details
             const projectRegex = /\/project\/([a-z0-9]+)\/environment\/([a-z0-9]+)/g;
@@ -169,6 +310,8 @@ class CoolifyLogs {
             // For each project and environment, get applications
             console.log('Projects and Applications:\n');
             let resourceCount = 0;
+            const cache = this.loadResourceCache();
+
             for (const [projId, project] of Object.entries(projects)) {
                 console.log(`📁 Project: ${project.name} (${projId})`);
 
@@ -179,20 +322,24 @@ class CoolifyLogs {
                     try {
                         const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
 
-                        const appRegex = /\/application\/([a-z0-9]+)[^<]*<[^>]*>([^<]*)?<\/[^>]*>/g;
+                        // Extract application IDs from links
+                        // Livewire renders applications dynamically, look for href="/application/ID"
+                        const appLinkRegex = /href="\/project\/[^\/]+\/environment\/[^\/]+\/application\/([a-z0-9]+)"/g;
                         let appMatch;
                         const apps = [];
+                        const appDetails = {};
 
-                        while ((appMatch = appRegex.exec(projectRes.body)) !== null) {
+                        while ((appMatch = appLinkRegex.exec(projectRes.body)) !== null) {
                             const appId = appMatch[1];
                             if (!apps.includes(appId)) {
                                 apps.push(appId);
                             }
                         }
 
-                        // If regex failed, try simpler pattern
+                        // If that didn't work, try simpler patterns
                         if (apps.length === 0) {
-                            const simpleAppRegex = /\/application\/([a-z0-9]+)/g;
+                            // Look for any /application/ reference
+                            const simpleAppRegex = /\/application\/([a-z0-9]{24})/g;
                             while ((appMatch = simpleAppRegex.exec(projectRes.body)) !== null) {
                                 const appId = appMatch[1];
                                 if (!apps.includes(appId)) {
@@ -201,10 +348,37 @@ class CoolifyLogs {
                             }
                         }
 
+                        // Extract app names/descriptions if available
+                        for (const appId of apps) {
+                            // Look for text near the application ID that might be the app name
+                            const namePattern = new RegExp(`<a[^>]*href="[^"]*\/${appId}"[^>]*>([^<]+)<`, 'i');
+                            const nameMatch = projectRes.body.match(namePattern);
+                            if (nameMatch) {
+                                appDetails[appId] = {
+                                    name: nameMatch[1].trim().substring(0, 100)
+                                };
+                            }
+                        }
+
                         if (apps.length > 0) {
                             for (const appId of apps) {
-                                console.log(`      🚀 Application: ${appId}`);
+                                // Get domains for this application
+                                const domains = await this.getApplicationDomains(projId, envId, appId);
+                                const domainsDisplay = domains.length > 0 ? domains.join(', ') : 'No domains configured';
+
+                                // Get app name if available
+                                const appName = appDetails[appId]?.name || appId;
+
+                                console.log(`      🚀 Application: ${appName}`);
+                                console.log(`         🌐 Domains: ${domainsDisplay}`);
                                 console.log(`         📜 View logs: coolify-logs <url> ${projId}/${envId}/${appId}`);
+
+                                // Cache the application with its primary domain as identifier
+                                if (domains.length > 0) {
+                                    const primaryDomain = domains[0].split('.')[0]; // Use subdomain as app name
+                                    this.cacheApplication(primaryDomain, projId, envId, appId);
+                                }
+
                                 resourceCount++;
                             }
                         }
@@ -227,7 +401,11 @@ class CoolifyLogs {
         console.log('🔍 Discovering projects, environments, and applications...');
 
         try {
-            const dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+            // Try /dashboard first, then fall back to root
+            let dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+            if (!dashboardRes.body || dashboardRes.body.includes('404')) {
+                dashboardRes = await this.request(`${this.baseURL}/`);
+            }
 
             // Extract project IDs
             const projectRegex = /\/project\/([a-z0-9]+)/g;
@@ -488,7 +666,7 @@ class CoolifyLogs {
         }
     }
 
-    async viewLatestDeploymentLogs() {
+    async viewLatestDeploymentLogs(projId = null, envId = null, appId = null) {
         try {
             const email = process.env.COOLIFY_USERNAME || process.env.U;
             const password = process.env.COOLIFY_PASSWORD || process.env.P;
@@ -507,7 +685,23 @@ class CoolifyLogs {
             // Step 1: Login
             await this.login(email, password);
 
-            // Step 2: Get deployments list
+            // Step 2: If IDs not provided, discover them
+            if (!projId || !envId || !appId) {
+                const discovered = await this.discoverResources();
+                if (!discovered) {
+                    console.error('❌ Could not discover project/environment/application IDs');
+                    return;
+                }
+                projId = this.projectId;
+                envId = this.environmentId;
+                appId = this.applicationId;
+            } else {
+                this.projectId = projId;
+                this.environmentId = envId;
+                this.applicationId = appId;
+            }
+
+            // Step 3: Get deployments list
             const deploymentIds = await this.getDeploymentsList();
 
             if (deploymentIds.length === 0) {
@@ -515,11 +709,11 @@ class CoolifyLogs {
                 return;
             }
 
-            // Step 3: Get latest deployment details
+            // Step 4: Get latest deployment details
             const latestDeploymentId = deploymentIds[0];
             const deploymentDetails = await this.getDeploymentDetails(latestDeploymentId);
 
-            // Step 4: Fetch and display logs
+            // Step 5: Fetch and display logs
             await this.getDeploymentLogs(latestDeploymentId);
 
             console.log('✅ Done!\n');
@@ -537,20 +731,29 @@ if (require.main === module) {
     const args = process.argv.slice(2);
     let baseURL = null;
     let command = 'logs';
+    let appName = null;
 
-    // Parse arguments: coolify-logs <url> [command]
+    // Parse arguments: coolify-logs [<url>] [command] [app-name]
     if (args.length > 0) {
-        if (args[0] === 'list') {
-            command = 'list';
+        if (args[0] === 'list' || args[0] === 'cached' || args[0] === 'cache') {
+            command = args[0];
             baseURL = process.env.COOLIFY_URL;
+            appName = args[1];
         } else if (args[0].startsWith('http')) {
             baseURL = args[0];
             if (args[1]) {
-                command = args[1];
+                if (args[1] === 'list' || args[1] === 'cached' || args[1] === 'cache') {
+                    command = args[1];
+                    appName = args[2];
+                } else {
+                    command = args[1];
+                    appName = args[2];
+                }
             }
         } else {
             command = args[0];
             baseURL = process.env.COOLIFY_URL;
+            appName = args[1];
         }
     }
 
@@ -577,8 +780,38 @@ if (require.main === module) {
                 process.exit(1);
             }
         })();
+    } else if (command === 'cached') {
+        // List cached applications
+        console.log('📋 Cached applications:\n');
+        const cache = viewer.loadResourceCache();
+        if (Object.keys(cache).length === 0) {
+            console.log('No cached applications. Run "coolify-logs list" to discover applications.\n');
+        } else {
+            Object.entries(cache).forEach(([key, data]) => {
+                console.log(`  ${data.appName}:`);
+                console.log(`    Domain: ${data.baseURL}`);
+                console.log(`    Project: ${data.projectId}`);
+                console.log(`    Environment: ${data.environmentId}`);
+                console.log(`    Application: ${data.applicationId}`);
+                console.log(`    Cached: ${new Date(data.cachedAt).toLocaleString()}`);
+                console.log();
+            });
+        }
     } else {
-        viewer.viewLatestDeploymentLogs();
+        // If command looks like proj/env/app format, parse it
+        let parsedProjId = null, parsedEnvId = null, parsedAppId = null;
+
+        if (command && command.includes('/')) {
+            const parts = command.split('/');
+            if (parts.length === 3) {
+                [parsedProjId, parsedEnvId, parsedAppId] = parts;
+                viewer.viewLatestDeploymentLogs(parsedProjId, parsedEnvId, parsedAppId);
+            } else {
+                viewer.viewLatestDeploymentLogs();
+            }
+        } else {
+            viewer.viewLatestDeploymentLogs();
+        }
     }
 }
 
