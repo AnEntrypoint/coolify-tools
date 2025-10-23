@@ -248,8 +248,9 @@ class CoolifyLogs {
         const res = await this.request(logsPageUrl);
 
         let logsContent = null;
+        let logFound = false;
 
-        // Strategy 1: Extract from Livewire component data - this is where actual logs are
+        // Strategy 1: Extract from Livewire component snapshot data
         const wireMatch = res.body.match(/wire:snapshot="([^"]+)"/);
         if (wireMatch) {
             try {
@@ -262,64 +263,87 @@ class CoolifyLogs {
 
                 const wireData = JSON.parse(decoded);
 
-                // Navigate the Livewire data structure to find logs
-                // The logs are typically in: data.output or similar fields
-                const dataStr = JSON.stringify(wireData);
-
                 // Look for fields that might contain deployment output
                 if (wireData.data && wireData.data.output) {
                     logsContent = wireData.data.output;
+                    logFound = true;
                 } else if (wireData.data && wireData.data.logs) {
                     logsContent = wireData.data.logs;
+                    logFound = true;
                 } else if (wireData.data && wireData.data.deployment_logs) {
                     logsContent = wireData.data.deployment_logs;
-                } else {
+                    logFound = true;
+                } else if (wireData.data) {
                     // Search for any field containing significant log-like data
                     for (const [key, value] of Object.entries(wireData.data || {})) {
-                        if (typeof value === 'string' && value.length > 500 &&
-                            (value.includes('git') || value.includes('npm') || value.includes('build') ||
-                             value.includes('docker') || value.includes('error') || value.includes('step'))) {
+                        if (typeof value === 'string' && value.length > 500) {
                             logsContent = value;
+                            logFound = true;
                             break;
                         }
                     }
                 }
             } catch (e) {
-                // Ignore parse errors
+                console.error('Error parsing wire snapshot:', e.message);
             }
         }
 
-        // Strategy 2: Look for pre/code tags as fallback
-        if (!logsContent) {
-            const preMatch = res.body.match(/<pre[^>]*>([\s\S]*?)<\/pre>/);
+        // Strategy 2: Extract from HTML rendered logs section
+        if (!logFound) {
+            // Look for error messages or status blocks
+            const errorMatch = res.body.match(/<[^>]*>(Error|Server is not functional)[^<]*<\/[^>]*>/);
+            if (errorMatch) {
+                logsContent = errorMatch[0];
+                logFound = true;
+            }
+        }
+
+        // Strategy 3: Look for pre/code tags as fallback
+        if (!logFound) {
+            const preMatch = res.body.match(/<pre[^>]*>([\s\S]{1,5000}?)<\/pre>/);
             if (preMatch) {
                 logsContent = preMatch[1];
+                logFound = true;
             }
         }
 
-        // Strategy 3: Look for code tags
-        if (!logsContent) {
-            const codeMatch = res.body.match(/<code[^>]*>([\s\S]*?)<\/code>/);
+        // Strategy 4: Look for code tags
+        if (!logFound) {
+            const codeMatch = res.body.match(/<code[^>]*>([\s\S]{1,5000}?)<\/code>/);
             if (codeMatch) {
                 logsContent = codeMatch[1];
+                logFound = true;
             }
         }
 
-        if (logsContent) {
+        // Strategy 5: Extract any substantial text content that looks like logs
+        if (!logFound) {
+            const textMatch = res.body.match(/(step|clone|install|build|error|failed|success|docker)[^\n]{0,200}/gi);
+            if (textMatch && textMatch.length > 0) {
+                logsContent = textMatch.join('\n');
+                logFound = true;
+            }
+        }
+
+        if (logFound && logsContent) {
             // Decode HTML entities
-            logsContent = logsContent
+            logsContent = String(logsContent)
                 .replace(/&lt;/g, '<')
                 .replace(/&gt;/g, '>')
                 .replace(/&amp;/g, '&')
                 .replace(/&quot;/g, '"')
                 .replace(/&#039;/g, "'")
+                .replace(/&nbsp;/g, ' ')
                 .replace(/\\n/g, '\n')
                 .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/<br\s*\/?>/gi, '\n')
                 .replace(/<[^>]+>/g, ''); // Remove remaining HTML tags
 
             console.log('--- DEPLOYMENT LOGS ---\n');
-            console.log(logsContent.substring(0, 5000));
-            if (logsContent.length > 5000) {
+            const displayContent = logsContent.substring(0, 10000);
+            console.log(displayContent);
+            if (logsContent.length > 10000) {
                 console.log('\n... (truncated) ...\n');
             }
             console.log('\n--- END LOGS ---\n');
@@ -327,7 +351,8 @@ class CoolifyLogs {
             return logsContent;
         } else {
             console.log('⚠️  Could not extract logs from deployment page\n');
-            console.log('Deployment page URL: ' + logsPageUrl + '\n');
+            console.log('Deployment URL: ' + logsPageUrl + '\n');
+            console.log('Try accessing the deployment page directly for detailed logs.\n');
             return null;
         }
     }
