@@ -1,10 +1,11 @@
 {
-  "name": "coolify-deploy-cli",
-  "version": "2.0.0",
-  "description": "CLI tool for Coolify deployment automation - Deploy applications from GitHub to Coolify via Livewire API",
+  "name": "coolify-tools",
+  "version": "1.0.0",
+  "description": "Comprehensive CLI toolset for Coolify - Deploy applications, view logs, and manage deployments via Coolify API",
   "main": "index.js",
   "bin": {
-    "coolify-deploy": "./index.js"
+    "coolify-tools": "./index.js",
+    "coolify-logs": "./view-logs.js"
   },
   "scripts": {
     "start": "node index.js",
@@ -13,14 +14,17 @@
   "keywords": [
     "coolify",
     "deployment",
+    "logs",
     "cli",
+    "tools",
     "automation",
     "devops",
     "docker",
     "nixpacks",
     "github",
     "livewire",
-    "deployment-automation"
+    "deployment-automation",
+    "deployment-logs"
   ],
   "author": {
     "name": "lanmower",
@@ -29,17 +33,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AnEntrypoint/coolify-deploy-cli.git"
+    "url": "https://github.com/AnEntrypoint/coolify-tools.git"
   },
   "bugs": {
-    "url": "https://github.com/AnEntrypoint/coolify-deploy-cli/issues"
+    "url": "https://github.com/AnEntrypoint/coolify-tools/issues"
   },
-  "homepage": "https://github.com/AnEntrypoint/coolify-deploy-cli#readme",
+  "homepage": "https://github.com/AnEntrypoint/coolify-tools#readme",
   "engines": {
     "node": ">=16.0.0"
   },
   "files": [
     "index.js",
+    "view-logs.js",
+    "view-app-logs.js",
     "README.md",
     "LICENSE"
   ],

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Coolify Deploy CLI - Real Browser-Emulated Deployment
+ * Coolify Tools - Comprehensive CLI for Coolify Deployments
  * Single file that performs actual deployment by emulating browser requests
  */
 
