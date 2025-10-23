@@ -278,7 +278,7 @@ class CoolifyLogs {
     }
 
     async listAllResources() {
-        console.log('📋 Listing all available resources...\n');
+        console.log('📋 Listing all available resources with domains...\n');
 
         try {
             // Try /dashboard first, then fall back to root
@@ -307,23 +307,18 @@ class CoolifyLogs {
                 }
             }
 
-            // For each project and environment, get applications
-            console.log('Projects and Applications:\n');
+            // For each project and environment, get applications and their domains
             let resourceCount = 0;
-            const cache = this.loadResourceCache();
 
             for (const [projId, project] of Object.entries(projects)) {
-                console.log(`📁 Project: ${project.name} (${projId})`);
+                console.log(`📁 ${project.name || 'Unknown Project'}`);
 
                 for (const envId of project.environments) {
-                    console.log(`   📦 Environment: ${envId}`);
-
                     // Get applications for this environment
                     try {
                         const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
 
                         // Extract application IDs from links
-                        // Livewire renders applications dynamically, look for href="/application/ID"
                         const appLinkRegex = /href="\/project\/[^\/]+\/environment\/[^\/]+\/application\/([a-z0-9]+)"/g;
                         let appMatch;
                         const apps = [];
@@ -338,7 +333,6 @@ class CoolifyLogs {
 
                         // If that didn't work, try simpler patterns
                         if (apps.length === 0) {
-                            // Look for any /application/ reference
                             const simpleAppRegex = /\/application\/([a-z0-9]{24})/g;
                             while ((appMatch = simpleAppRegex.exec(projectRes.body)) !== null) {
                                 const appId = appMatch[1];
@@ -348,9 +342,8 @@ class CoolifyLogs {
                             }
                         }
 
-                        // Extract app names/descriptions if available
+                        // Extract app names if available
                         for (const appId of apps) {
-                            // Look for text near the application ID that might be the app name
                             const namePattern = new RegExp(`<a[^>]*href="[^"]*\/${appId}"[^>]*>([^<]+)<`, 'i');
                             const nameMatch = projectRes.body.match(namePattern);
                             if (nameMatch) {
@@ -364,18 +357,22 @@ class CoolifyLogs {
                             for (const appId of apps) {
                                 // Get domains for this application
                                 const domains = await this.getApplicationDomains(projId, envId, appId);
-                                const domainsDisplay = domains.length > 0 ? domains.join(', ') : 'No domains configured';
 
                                 // Get app name if available
                                 const appName = appDetails[appId]?.name || appId;
 
-                                console.log(`      🚀 Application: ${appName}`);
-                                console.log(`         🌐 Domains: ${domainsDisplay}`);
-                                console.log(`         📜 View logs: coolify-logs <url> ${projId}/${envId}/${appId}`);
+                                // Display in clear format
+                                if (domains.length > 0) {
+                                    domains.forEach(domain => {
+                                        console.log(`   🌐 ${domain}`);
+                                    });
+                                } else {
+                                    console.log(`   🚀 ${appName} (no domains configured)`);
+                                }
 
                                 // Cache the application with its primary domain as identifier
                                 if (domains.length > 0) {
-                                    const primaryDomain = domains[0].split('.')[0]; // Use subdomain as app name
+                                    const primaryDomain = domains[0].split('.')[0];
                                     this.cacheApplication(primaryDomain, projId, envId, appId);
                                 }
 
@@ -383,13 +380,13 @@ class CoolifyLogs {
                             }
                         }
                     } catch (e) {
-                        console.log(`      ⚠️  Could not fetch applications: ${e.message}`);
+                        console.log(`   ⚠️  Could not fetch applications: ${e.message}`);
                     }
                 }
                 console.log();
             }
 
-            console.log(`\n✅ Found ${resourceCount} deployable applications\n`);
+            console.log(`✅ Found ${resourceCount} deployable applications\n`);
             return true;
         } catch (e) {
             console.error('Error listing resources:', e.message);
