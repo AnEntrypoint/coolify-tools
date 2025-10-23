@@ -12,7 +12,21 @@ const { URL } = require('url');
 
 class CoolifyLogs {
     constructor(baseURL = null) {
-        this.baseURL = baseURL || process.env.COOLIFY_URL || 'https://coolify.acc.l-inc.co.za';
+        // Support multiple ways to specify Coolify URL
+        this.baseURL = baseURL ||
+                      process.env.COOLIFY_URL ||
+                      process.env.COOLIFY_BASE_URL ||
+                      process.env.COOLIFY_HOST ||
+                      'https://coolify.acc.l-inc.co.za';
+
+        // Ensure URL has protocol
+        if (!this.baseURL.startsWith('http://') && !this.baseURL.startsWith('https://')) {
+            this.baseURL = 'https://' + this.baseURL;
+        }
+
+        // Remove trailing slash
+        this.baseURL = this.baseURL.replace(/\/$/, '');
+
         this.cookies = '';
         this.csrfToken = null;
         this.projectId = null;
@@ -84,33 +98,45 @@ class CoolifyLogs {
     }
 
     async login(email, password) {
-        console.log('🔐 Logging in...');
+        console.log(`🔐 Logging in to ${this.baseURL}...`);
 
-        // Get CSRF token from login page
-        const loginPageRes = await this.request(`${this.baseURL}/login`);
-        const csrfMatch = loginPageRes.body.match(/<meta name="csrf-token" content="([^"]+)"/);
-        this.csrfToken = csrfMatch ? csrfMatch[1] : null;
+        try {
+            // Get CSRF token from login page
+            const loginPageRes = await this.request(`${this.baseURL}/login`);
+            const csrfMatch = loginPageRes.body.match(/<meta name="csrf-token" content="([^"]+)"/);
+            this.csrfToken = csrfMatch ? csrfMatch[1] : null;
 
-        // Submit login form
-        const loginRes = await this.request(`${this.baseURL}/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRF-Token': this.csrfToken,
-                'Referer': `${this.baseURL}/login`
-            },
-            body: new URLSearchParams({
-                email,
-                password
-            }).toString()
-        });
+            // Submit login form
+            const loginRes = await this.request(`${this.baseURL}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRF-Token': this.csrfToken,
+                    'Referer': `${this.baseURL}/login`
+                },
+                body: new URLSearchParams({
+                    email,
+                    password
+                }).toString()
+            });
 
-        if (loginRes.body.includes('These credentials do not match')) {
-            throw new Error('Invalid email or password');
+            if (loginRes.body.includes('These credentials do not match')) {
+                throw new Error('Invalid email or password');
+            }
+
+            console.log('✅ Logged in successfully\n');
+            return true;
+        } catch (error) {
+            if (error.code === 'ENOTFOUND') {
+                throw new Error(`Could not resolve Coolify server: ${this.baseURL}\n\n` +
+                    `Please specify your Coolify URL using one of these methods:\n` +
+                    `  1. Command line: coolify-logs https://your-coolify-url\n` +
+                    `  2. Environment variable: export COOLIFY_URL=https://your-coolify-url\n` +
+                    `  3. Environment variable: export COOLIFY_HOST=your-coolify-url\n\n` +
+                    `Example: coolify-logs https://coolify.example.com`);
+            }
+            throw error;
         }
-
-        console.log('✅ Logged in successfully\n');
-        return true;
     }
 
     async listAllResources() {
