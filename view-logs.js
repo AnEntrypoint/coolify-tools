@@ -184,13 +184,15 @@ class CoolifyLogs {
                         const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
 
                         // Extract domains directly from page
-                        // Applications are rendered by Livewire and their domains are in the HTML
-                        const domainRegex = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
+                        // Domains are embedded in JSON with escaped slashes: https:\/\/domain.com
+                        const domainRegex = /(?:https?:)?\\?\/\\?\/([a-z0-9.-]+\.[a-z]{2,})|https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
                         let domainMatch;
                         const pageDomainsFound = new Set();
 
                         while ((domainMatch = domainRegex.exec(projectRes.body)) !== null) {
-                            const domain = domainMatch[1].toLowerCase();
+                            // The domain can be in either group 1 or group 2 depending on which pattern matched
+                            const domain = (domainMatch[1] || domainMatch[2]).toLowerCase();
+
                             // Filter out Coolify internal and common domains
                             if (!domain.includes('coolify.io') &&
                                 !domain.includes('coolify.247420.xyz') &&
