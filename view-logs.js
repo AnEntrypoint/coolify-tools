@@ -556,11 +556,7 @@ class CoolifyLogs {
                 .replace(/<[^>]+>/g, ''); // Remove remaining HTML tags
 
             console.log('--- DEPLOYMENT LOGS ---\n');
-            const displayContent = logsContent.substring(0, 10000);
-            console.log(displayContent);
-            if (logsContent.length > 10000) {
-                console.log('\n... (truncated) ...\n');
-            }
+            console.log(logsContent);
             console.log('\n--- END LOGS ---\n');
 
             return logsContent;
