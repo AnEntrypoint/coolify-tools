@@ -190,19 +190,40 @@ class CoolifyLogs {
         const deploymentsPageUrl = `${this.baseURL}/project/${this.projectId}/environment/${this.environmentId}/application/${this.applicationId}/deployment`;
         const res = await this.request(deploymentsPageUrl);
 
-        // Extract deployment links from HTML
-        const deploymentLinks = [];
-        const deploymentRegex = /\/deployment\/([a-z0-9]{24})/g;
+        // Extract deployments with their timestamps for proper ordering
+        const deployments = [];
+
+        // Look for deployment entries in the HTML
+        // Pattern: deployment ID followed by status and timestamps
+        const deploymentPattern = /\/deployment\/([a-z0-9]{24})[^<]*(?:<[^>]*>)*([^<]*(?:Success|Failed|Running|Pending)[^<]*)/g;
         let match;
 
-        while ((match = deploymentRegex.exec(res.body)) !== null) {
-            if (!deploymentLinks.includes(match[1])) {
-                deploymentLinks.push(match[1]);
+        while ((match = deploymentPattern.exec(res.body)) !== null) {
+            const deploymentId = match[1];
+            // Check if we already have this deployment
+            if (!deployments.some(d => d.id === deploymentId)) {
+                deployments.push({
+                    id: deploymentId,
+                    info: match[2]
+                });
             }
         }
 
-        console.log(`✅ Found ${deploymentLinks.length} deployments\n`);
-        return deploymentLinks;
+        // If pattern didn't work, fall back to simple ID extraction
+        if (deployments.length === 0) {
+            const deploymentRegex = /\/deployment\/([a-z0-9]{24})/g;
+            while ((match = deploymentRegex.exec(res.body)) !== null) {
+                const deploymentId = match[1];
+                if (!deployments.some(d => d.id === deploymentId)) {
+                    deployments.push({ id: deploymentId, info: '' });
+                }
+            }
+        }
+
+        console.log(`✅ Found ${deployments.length} deployments\n`);
+
+        // Return just the IDs in order (first is latest)
+        return deployments.map(d => d.id);
     }
 
     async getDeploymentDetails(deploymentId) {
