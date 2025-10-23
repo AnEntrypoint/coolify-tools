@@ -1,6 +1,6 @@
 {
   "name": "coolify-tools",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Comprehensive CLI toolset for Coolify - Deploy applications, view logs, and manage deployments via Coolify API",
   "main": "index.js",
   "bin": {
