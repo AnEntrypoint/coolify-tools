@@ -113,6 +113,89 @@ class CoolifyLogs {
         return true;
     }
 
+    async listAllResources() {
+        console.log('📋 Listing all available resources...\n');
+
+        try {
+            const dashboardRes = await this.request(`${this.baseURL}/dashboard`);
+
+            // Extract all projects with their details
+            const projectRegex = /\/project\/([a-z0-9]+)\/environment\/([a-z0-9]+)/g;
+            let match;
+            const projects = {};
+
+            while ((match = projectRegex.exec(dashboardRes.body)) !== null) {
+                const projectId = match[1];
+                const envId = match[2];
+                if (!projects[projectId]) {
+                    projects[projectId] = {
+                        id: projectId,
+                        name: 'Unknown Project',
+                        environments: []
+                    };
+                }
+                if (!projects[projectId].environments.includes(envId)) {
+                    projects[projectId].environments.push(envId);
+                }
+            }
+
+            // For each project and environment, get applications
+            console.log('Projects and Applications:\n');
+            let resourceCount = 0;
+            for (const [projId, project] of Object.entries(projects)) {
+                console.log(`📁 Project: ${project.name} (${projId})`);
+
+                for (const envId of project.environments) {
+                    console.log(`   📦 Environment: ${envId}`);
+
+                    // Get applications for this environment
+                    try {
+                        const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
+
+                        const appRegex = /\/application\/([a-z0-9]+)[^<]*<[^>]*>([^<]*)?<\/[^>]*>/g;
+                        let appMatch;
+                        const apps = [];
+
+                        while ((appMatch = appRegex.exec(projectRes.body)) !== null) {
+                            const appId = appMatch[1];
+                            if (!apps.includes(appId)) {
+                                apps.push(appId);
+                            }
+                        }
+
+                        // If regex failed, try simpler pattern
+                        if (apps.length === 0) {
+                            const simpleAppRegex = /\/application\/([a-z0-9]+)/g;
+                            while ((appMatch = simpleAppRegex.exec(projectRes.body)) !== null) {
+                                const appId = appMatch[1];
+                                if (!apps.includes(appId)) {
+                                    apps.push(appId);
+                                }
+                            }
+                        }
+
+                        if (apps.length > 0) {
+                            for (const appId of apps) {
+                                console.log(`      🚀 Application: ${appId}`);
+                                console.log(`         📜 View logs: coolify-logs <url> ${projId}/${envId}/${appId}`);
+                                resourceCount++;
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`      ⚠️  Could not fetch applications: ${e.message}`);
+                    }
+                }
+                console.log();
+            }
+
+            console.log(`\n✅ Found ${resourceCount} deployable applications\n`);
+            return true;
+        } catch (e) {
+            console.error('Error listing resources:', e.message);
+            return false;
+        }
+    }
+
     async discoverResources() {
         console.log('🔍 Discovering projects, environments, and applications...');
 
@@ -446,8 +529,25 @@ if (require.main === module) {
     const viewer = new CoolifyLogs(baseURL);
 
     if (command === 'list') {
-        // For list command, we need to auto-discover project/environment/application
-        viewer.viewLatestDeploymentLogs();
+        // For list command, login and show all available resources
+        (async () => {
+            try {
+                const email = process.env.U;
+                const password = process.env.P;
+
+                if (!email || !password) {
+                    console.error('❌ Missing credentials');
+                    console.error('Set U and P environment variables with your Coolify login details\n');
+                    process.exit(1);
+                }
+
+                await viewer.login(email, password);
+                await viewer.listAllResources();
+            } catch (error) {
+                console.error('❌ Error:', error.message);
+                process.exit(1);
+            }
+        })();
     } else {
         viewer.viewLatestDeploymentLogs();
     }
