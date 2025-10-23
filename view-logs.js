@@ -183,36 +183,33 @@ class CoolifyLogs {
                     try {
                         const projectRes = await this.request(`${this.baseURL}/project/${projId}/environment/${envId}`);
 
-                        // Extract domains directly from page
-                        // Domains are embedded in JSON with escaped slashes: https:\/\/domain.com
-                        const domainRegex = /(?:https?:)?\\?\/\\?\/([a-z0-9.-]+\.[a-z]{2,})|https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
-                        let domainMatch;
-                        const pageDomainsFound = new Set();
+                        // Extract applications JSON data
+                        const jsonMatch = projectRes.body.match(/applications:\s*JSON\.parse\('([^']+)'\)/);
+                        if (jsonMatch) {
+                            try {
+                                // Decode the JSON string (handle unicode escapes and forward slashes)
+                                const jsonStr = jsonMatch[1]
+                                    .replace(/\\u0022/g, '"')
+                                    .replace(/\\\\\//g, '/')
+                                    .replace(/\\u005c/g, '\\');
 
-                        while ((domainMatch = domainRegex.exec(projectRes.body)) !== null) {
-                            // The domain can be in either group 1 or group 2 depending on which pattern matched
-                            const domain = (domainMatch[1] || domainMatch[2]).toLowerCase();
+                                const apps = JSON.parse(jsonStr);
 
-                            // Filter out Coolify internal and common domains
-                            if (!domain.includes('coolify.io') &&
-                                !domain.includes('coolify.247420.xyz') &&
-                                !domain.includes('coollabs.io') &&
-                                !domain.includes('cdn.') &&
-                                !domain.includes('github.com') &&
-                                !domain.includes('opencollective.com') &&
-                                !domain.includes('donate.stripe.com') &&
-                                !domain.includes('svgjs.dev') &&
-                                !domain.includes('w3.org') &&
-                                !domain.includes('localhost')) {
-                                pageDomainsFound.add(domain);
+                                // Extract domains from each application's fqdn field
+                                apps.forEach(app => {
+                                    if (app.fqdn) {
+                                        // Extract domain from "https://domain.com" format (after JSON parsing)
+                                        const domainMatch = app.fqdn.match(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/i);
+                                        if (domainMatch) {
+                                            const domain = domainMatch[1].toLowerCase();
+                                            console.log(`   🌐 ${domain}`);
+                                            resourceCount++;
+                                        }
+                                    }
+                                });
+                            } catch (parseErr) {
+                                // Silently skip if JSON parsing fails
                             }
-                        }
-
-                        if (pageDomainsFound.size > 0) {
-                            pageDomainsFound.forEach(domain => {
-                                console.log(`   🌐 ${domain}`);
-                                resourceCount++;
-                            });
                         }
                     } catch (e) {
                         console.log(`   ⚠️  Could not fetch environment: ${e.message}`);
